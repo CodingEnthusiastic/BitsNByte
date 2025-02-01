@@ -195,7 +195,7 @@
                     document.getElementById('route-details').classList.remove('hidden');
 
                     // Draw optimized route
-                    const routeCoords = data.route;
+                    const routeCoords = data.route.map(coord => [coord[1], coord[0]]);
                     routeLayer = L.polyline(routeCoords, {
                         color: 'red',
                         weight: 3,
