@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>PlacementsDB - Login</title>
+    <script type="module">
+        // Firebase imports
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js';
+        import { getAuth, GoogleAuthProvider, signInWithPopup } from 'https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js';
+
+        // Firebase configuration
+        const firebaseConfig = {
+            // Enter config here
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // Sign in function
+        window.signIn = async function () {
+            const provider = new GoogleAuthProvider();
+
+            try {
+                const result = await signInWithPopup(auth, provider);
+                const user = result.user;
+                console.log("User signed in:", user);
+
+                // Get the ID token
+                const idToken = await user.getIdToken();
+
+                // Send the ID token and user type to the backend for verification
+                const response = await fetch('/verify_token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        idToken: idToken
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Network response was not ok');
+                }
+
+                const data = await response.json();
+                if (data.success) {
+                    window.location.href = data.redirect; // Redirect to the user's home page
+                } else {
+                    alert(data.error); // Handle errors returned from the server
+                }
+            } catch (error) {
+                console.error("Error during sign-in:", error);
+                alert('Sign in failed. Please try again. Error: ' + error.message);
+            }
+        }
+    </script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background: linear-gradient(to right, #bfdbfe, #93c5fd);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .wave {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100px;
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320'%3E%3Cpath fill='%23ffffff' fill-opacity='1' d='M0,96L48,112C96,128,192,160,288,154.7C384,149,480,107,576,90.7C672,75,768,85,864,112C960,139,1056,181,1152,186.7C1248,192,1344,160,1392,144L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z'%3E%3C/path%3E%3C/svg%3E");
+            background-size: 1440px 100px;
+            animation: wave 10s linear infinite;
+        }
+
+        .wave.wave2 {
+            opacity: 0.5;
+            animation: wave2 8s linear infinite;
+        }
+
+        .wave.wave3 {
+            opacity: 0.2;
+            animation: wave3 6s linear infinite;
+        }
+
+        @keyframes wave {
+            0% {
+                background-position-x: 0;
+            }
+
+            100% {
+                background-position-x: 1440px;
+            }
+        }
+
+        @keyframes wave2 {
+            0% {
+                background-position-x: 0;
+            }
+
+            100% {
+                background-position-x: -1440px;
+            }
+        }
+
+        @keyframes wave3 {
+            0% {
+                background-position-x: 0;
+            }
+
+            100% {
+                background-position-x: 1440px;
+            }
+        }
+
+        .login-container {
+            max-width: 400px;
+            margin: 60px auto;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            position: relative;
+            z-index: 1;
+            animation: fadeIn 1s ease-out;
+            backdrop-filter: blur(10px);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .login-container h1 {
+            color: #1e40af;
+            font-size: 2em;
+            margin-bottom: 30px;
+            font-weight: 600;
+        }
+
+        .login-logo {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+            display: block;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+
+            100% {
+                transform: translateY(0px);
+            }
+        }
+
+        .google-signin-btn {
+            background: #2563eb;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);
+        }
+
+        .google-signin-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(37, 99, 235, 0.3);
+            background: #1d4ed8;
+        }
+
+        .google-signin-btn img {
+            width: 24px;
+            height: 24px;
+            margin-right: 10px;
+            filter: brightness(0) invert(1);
+        }
+
+        .signin-container {
+            position: relative;
+            z-index: 2;
+        }
+
+        /* Sign out animation class */
+        .signout {
+            animation: slideDown 0.5s ease-in forwards;
+        }
+
+        @keyframes slideDown {
+            0% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+
+            100% {
+                transform: translateY(100vh);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wave"></div>
+    <div class="wave wave2"></div>
+    <div class="wave wave3"></div>
+    <div class="login-container">
+        <img src="{{ url_for('static', filename='icons/Marine.png') }}" alt="Marine Logo" class="login-logo">
+        <h1>Welcome!</h1>
+        <div class="signin-container">
+            <button onclick="signIn()" class="google-signin-btn">
+                <img src="{{ url_for('static', filename='icons/google-icon.png') }}" alt="Google" class="google-icon">
+                Sign in with Google
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Add animation when user signs out
+        function addSignOutAnimation() {
+            document.querySelector('.login-container').classList.add('signout');
+        }
+    </script>
+</body>
+
+</html>

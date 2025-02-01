@@ -6,6 +6,23 @@ from flask import Flask, render_template, jsonify, request
 import requests
 import geopandas as gpd
 import shapely
+from functools import wraps
+from flask import session, redirect, url_for
+from flask_login import LoginManager, login_required, UserMixin
+import secrets
+import firebase_admin
+from firebase_admin import credentials, auth
+
+# Initialize Flask app
+app = Flask(__name__, static_folder="static", template_folder="templates")
+
+# Set secure secret key
+app.secret_key = secrets.token_hex(32)  # 32 bytes = 256 bits
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 
 
 class OceanRoutingEnv(gym.Env):
@@ -279,9 +296,6 @@ def get_environmental_data(lat, lon):
         }
 
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
-
-
 PORT_COORDINATES = {
     "Mumbai": [72.8463, 18.9335],
     "Chennai": [80.3416, 13.0937],
@@ -296,11 +310,6 @@ PORT_COORDINATES = {
 
 def get_port_coordinates(port_name):
     return PORT_COORDINATES.get(port_name)
-
-
-@app.route("/")
-def index():
-    return render_template("index.html", ports=PORT_COORDINATES)
 
 
 @app.route("/optimize_route", methods=["POST"])
@@ -378,6 +387,71 @@ def optimize_route():
     except Exception as e:
         print(f"Error: {str(e)}")
         return jsonify({"error": "Route optimization failed"}), 500
+
+
+cred = credentials.Certificate(
+    # Enter cred json here
+)
+firebase_admin.initialize_app(cred)
+
+
+# Login required decorator
+def login_required(allowed_types):  # noqa: F811
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if "user_type" not in session or "user_id" not in session:
+                return redirect(url_for("login"))
+            if session["user_type"] not in allowed_types:
+                return redirect(url_for("unauthorized"))
+            return f(*args, **kwargs)
+
+        return decorated_function
+
+    return decorator
+
+
+@app.route("/verify_token", methods=["POST"])
+def verify_token():
+    try:
+        token = request.json.get("idToken")
+        if not token:
+            return jsonify({"error": "No token provided"}), 400
+
+        decoded_token = auth.verify_id_token(token)
+        user_id = decoded_token["uid"]
+        email = decoded_token.get("email", "")
+
+        session["user_id"] = user_id
+        session["email"] = email
+        session["logged_in"] = True
+
+        return jsonify({"success": True, "redirect": "/"})
+
+    except Exception as e:
+        print(f"Token verification error: {str(e)}")
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/dashboard")
+def dashboard():
+    if not session.get("logged_in"):
+        return redirect(url_for("login"))
+    return render_template("index.html")
+
+
+@app.route("/")
+def index():
+    if not session.get("logged_in"):
+        return redirect(url_for("login"))
+    return render_template("index.html")
+
+
+@app.route("/login")
+def login():
+    if session.get("logged_in"):
+        return redirect(url_for("dashboard"))
+    return render_template("login.html")
 
 
 if __name__ == "__main__":
