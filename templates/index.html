@@ -56,6 +56,20 @@
                         </optgroup>
                     </select>
                 </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label class="block text-lg font-semibold mb-2">Ship Weight (tons)</label>
+                        <input type="number" id="ship-weight"
+                            class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500" min="1000"
+                            max="500000" value="50000" placeholder="Enter ship weight">
+                    </div>
+                    <div>
+                        <label class="block text-lg font-semibold mb-2">Cargo Weight (tons)</label>
+                        <input type="number" id="cargo-weight"
+                            class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500" min="0" max="400000"
+                            value="25000" placeholder="Enter cargo weight">
+                    </div>
+                </div>
                 <div class="col-span-full text-center mt-4">
                     <button type="submit"
                         class="bg-blue-600 hover:bg-blue-800 text-white font-bold py-3 px-6 rounded-lg shadow-md transition transform hover:scale-105">
@@ -181,7 +195,9 @@
 
             axios.post('/optimize_route', {
                 start_port: startPort,
-                end_port: endPort
+                end_port: endPort,
+                ship_weight: parseFloat(document.getElementById('ship-weight').value),
+                cargo_weight: parseFloat(document.getElementById('cargo-weight').value)
             })
                 .then(response => {
                     const data = response.data;

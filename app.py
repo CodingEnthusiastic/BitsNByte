@@ -9,32 +9,54 @@ import shapely
 
 
 class OceanRoutingEnv(gym.Env):
-    def __init__(self, ports_data, wind_data, current_data):
+    def __init__(
+        self, ports_data, wind_data, current_data, ship_weight=50000, cargo_weight=25000
+    ):
         super().__init__()
         self.ports = ports_data
         self.wind_data = wind_data
         self.current_data = current_data
+        self.ship_weight = ship_weight
+        self.cargo_weight = cargo_weight
+        self.total_weight = ship_weight + cargo_weight
 
-        # Refined action and observation spaces
+        # Reduce action scale to prevent large deviations
         self.action_space = gym.spaces.Box(
-            low=-0.05, high=0.05, shape=(2,), dtype=np.float32
+            low=-0.02, high=0.02, shape=(2,), dtype=np.float32
         )
+
+        # Update observation space to include weights
         self.observation_space = gym.spaces.Box(
             low=np.array(
-                [-90, -180, -90, -180, 0, 0, 0, 0]
-            ),  # Lat: -90 to 90, Lon: -180 to 180
+                [-90, -180, -90, -180, 0, 0, 0, 0, 0, 0, 0]  # Added weights
+            ),
             high=np.array(
-                [90, 180, 90, 180, 100, 360, 100, 360]
-            ),  # Speed and direction bounds
+                [
+                    90,
+                    180,
+                    90,
+                    180,
+                    100,
+                    360,
+                    100,
+                    360,
+                    1000,
+                    500000,
+                    400000,
+                ]  # Added weights
+            ),
             dtype=np.float32,
         )
 
         self.current_pos = None
         self.target_pos = None
-        self.max_steps = 500
+        self.max_steps = 300  # Reduced to encourage more direct routes
         self.steps = 0
         self.path_history = []
+        self.initial_distance = None
+        self.last_distance = None
         self.land_polygons = self._load_land_polygons()
+        self.initial_pos = None
 
     def _load_land_polygons(self):
         """Load land polygons from Natural Earth dataset"""
@@ -58,72 +80,82 @@ class OceanRoutingEnv(gym.Env):
             self.current_pos = np.array(start_coords, dtype=np.float32)
             self.target_pos = np.array(end_coords, dtype=np.float32)
         else:
-            # Use default coordinates from ports_data if available
             self.current_pos = np.array(self.ports["start"], dtype=np.float32)
             self.target_pos = np.array(self.ports["end"], dtype=np.float32)
 
         self.path_history = [self.current_pos.tolist()]
         self.steps = 0
+        self.initial_distance = self._haversine_distance(
+            self.current_pos, self.target_pos
+        )
+        self.last_distance = self.initial_distance
+        self.initial_pos = self.current_pos.copy()
+        self.path_history = [self.current_pos.copy()]
 
         return self._get_observation(), {}
 
     def step(self, action):
-        # Store previous position
+        self.steps += 1
         prev_pos = self.current_pos.copy()
 
-        # Calculate movement
-        wind_effect = self._calculate_wind_effect()
-        current_effect = self._calculate_current_effect()
+        # Calculate movement with reduced environmental effects
+        wind_effect = self._calculate_wind_effect() * 0.5  # Reduced impact
+        current_effect = self._calculate_current_effect() * 0.5  # Reduced impact
         total_movement = action + wind_effect + current_effect
 
         # Update position
         self.current_pos += total_movement
 
-        # Force stay near start point in first few steps
-        if self.steps < 5:
-            start_dist = self._haversine_distance(
-                self.current_pos, np.array(self.ports["start"])
-            )
-            if start_dist > 1.0:
-                self.current_pos = prev_pos  # Revert movement
+        # Ensure position stays within bounds
+        self.current_pos = np.clip(
+            self.current_pos,
+            self.observation_space.low[:2],
+            self.observation_space.high[:2],
+        )
 
-        # Handle final approach
-        dist_to_target = self._haversine_distance(self.current_pos, self.target_pos)
-        if dist_to_target < 2.0:  # Within final approach
-            # Pull towards exact target position
+        current_distance = self._haversine_distance(self.current_pos, self.target_pos)
+
+        # Progressive approach to target
+        if current_distance < 2.0:  # Within final approach
             direction = self.target_pos - self.current_pos
-            self.current_pos += direction * 0.1
+            direction = direction / np.linalg.norm(direction)
+            self.current_pos += direction * 0.01 * (2.0 - current_distance)
 
-        self.path_history.append(self.current_pos.tolist())
-        self.steps += 1
+        self.path_history.append(self.current_pos.copy())
 
-        # Rest of the existing step logic
-        distance = self._haversine_distance(self.current_pos, self.target_pos)
+        # Check termination conditions
         if self._is_over_land():
             return (
                 self._get_observation(),
-                -5000000,
+                -10000000,
                 True,
                 False,
                 {"termination": "land_collision"},
             )
 
-        done = distance < 0.1 or self.steps >= self.max_steps
-        reward = self._calculate_reward(distance, done)
+        # Calculate reward
+        reward = self._calculate_reward(current_distance)
+        done = current_distance < 0.1 or self.steps >= self.max_steps
+
+        self.last_distance = current_distance
 
         return self._get_observation(), reward, done, False, {}
 
     def _get_observation(self):
+        current_distance = self._haversine_distance(self.current_pos, self.target_pos)
         return np.array(
             [
-                self.current_pos[0],  # Current Latitude
-                self.current_pos[1],  # Current Longitude
-                self.target_pos[0],  # Target Latitude
-                self.target_pos[1],  # Target Longitude
+                self.current_pos[0],
+                self.current_pos[1],
+                self.target_pos[0],
+                self.target_pos[1],
                 self.wind_data["speed"],
                 self.wind_data["direction"],
                 self.current_data["speed"],
                 self.current_data["direction"],
+                current_distance,
+                self.ship_weight,
+                self.cargo_weight,
             ]
         )
 
@@ -178,29 +210,42 @@ class OceanRoutingEnv(gym.Env):
         c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
         return R * c
 
-    def _calculate_reward(self, distance, done):
-        # Base rewards
-        efficiency_bonus = 10 / (1 + distance)
-        distance_penalty = -distance * 2
+    def _calculate_reward(self, current_distance):
+        # Progressive reward system with weight penalties
+        distance_improvement = self.last_distance - current_distance
+        progress_reward = distance_improvement * 100
 
-        # Start/End point penalties
-        start_dist = self._haversine_distance(
-            self.current_pos, np.array(self.ports["start"])
+        # Calculate deviation from ideal path
+        ideal_distance = self._haversine_distance(self.initial_pos, self.target_pos)
+        current_path_length = sum(
+            self._haversine_distance(self.path_history[i], self.path_history[i + 1])
+            for i in range(len(self.path_history) - 1)
         )
-        if (
-            self.steps < 10 and start_dist > 0.5
-        ):  # Penalize if moving away from start too early
-            return -10000
+        direct_path_deviation = current_path_length - ideal_distance
 
-        # Completion rewards/penalties
-        if done:
-            end_dist = self._haversine_distance(self.current_pos, self.target_pos)
-            if end_dist < 0.1:  # Successfully reached destination
-                return 200000
-            else:  # Failed to reach destination
-                return -50000
+        # Weight-based penalties
+        weight_factor = self.total_weight / 500000  # Normalize by max weight
+        efficiency_penalty = -direct_path_deviation * 0.1 * weight_factor
+        movement_penalty = -0.1 * weight_factor  # Heavier ships cost more to move
 
-        return distance_penalty + efficiency_bonus
+        # Direction and completion rewards
+        direction_to_target = np.arctan2(
+            self.target_pos[1] - self.current_pos[1],
+            self.target_pos[0] - self.current_pos[0],
+        )
+        movement_direction = np.arctan2(
+            self.current_pos[1] - self.path_history[-2][1],
+            self.current_pos[0] - self.path_history[-2][0],
+        )
+        direction_alignment = np.cos(direction_to_target - movement_direction)
+        direction_bonus = direction_alignment * 10
+
+        if current_distance < 0.1:
+            return 1000 * (1 - weight_factor * 0.5)  # Reduced reward for heavy ships
+        elif self.steps >= self.max_steps:
+            return -100 * weight_factor  # Increased penalty for heavy ships
+
+        return progress_reward + efficiency_penalty + direction_bonus + movement_penalty
 
 
 def get_environmental_data(lat, lon):
@@ -263,6 +308,8 @@ def optimize_route():
     try:
         start_port = request.json.get("start_port")
         end_port = request.json.get("end_port")
+        ship_weight = request.json.get("ship_weight", 50000)
+        cargo_weight = request.json.get("cargo_weight", 25000)
 
         if not start_port or not end_port:
             return jsonify({"error": "Start and end ports required"}), 400
@@ -284,6 +331,8 @@ def optimize_route():
             ports_data={"start": start_coords, "end": end_coords},
             wind_data=env_data["wind"],
             current_data=env_data["current"],
+            ship_weight=ship_weight,
+            cargo_weight=cargo_weight,
         )
 
         # Wrap environment for stable-baselines
