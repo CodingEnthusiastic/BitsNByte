@@ -234,7 +234,7 @@ def get_environmental_data(lat, lon):
         }
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", template_folder="templates")
 
 
 PORT_COORDINATES = {

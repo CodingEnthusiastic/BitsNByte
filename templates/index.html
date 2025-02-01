@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-velocity@1.0.0/dist/leaflet-velocity.min.js"></script>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 
 <body class="bg-gradient-to-r from-blue-100 to-blue-300 min-h-screen flex items-center justify-center p-6">
@@ -57,14 +57,16 @@
                     </select>
                 </div>
                 <div class="col-span-full text-center mt-4">
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-800 text-white font-bold py-3 px-6 rounded-lg shadow-md transition transform hover:scale-105">
+                    <button type="submit"
+                        class="bg-blue-600 hover:bg-blue-800 text-white font-bold py-3 px-6 rounded-lg shadow-md transition transform hover:scale-105">
                         Optimize Route
                     </button>
                 </div>
             </form>
         </div>
 
-        <div id="map" class="h-[500px] w-full mt-6 rounded-lg shadow-lg border border-blue-500" style="min-height: 400px;"></div>
+        <div id="map" class="h-[500px] w-full mt-6 rounded-lg shadow-lg border border-blue-500"
+            style="min-height: 400px;"></div>
 
         <div id="route-details" class="mt-6 bg-gray-50 p-6 rounded-lg shadow-md hidden">
             <h2 class="text-xl font-semibold text-gray-700 mb-4">Route Details</h2>
@@ -124,12 +126,11 @@
             }
         }
 
-        // Modify route optimization to include Windy data
         document.getElementById('route-form').addEventListener('submit', function (e) {
             e.preventDefault();
             const startPort = document.getElementById('start-port').value;
             const endPort = document.getElementById('end-port').value;
-            if(startPort === endPort){
+            if (startPort === endPort) {
                 alert("Start and End ports cannot be the same");
                 return;
             }
