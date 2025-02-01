@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Ocean Route Optimizer</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-velocity@1.0.0/dist/leaflet-velocity.min.js"></script>
+</head>
+
+<body class="bg-gradient-to-r from-blue-100 to-blue-300 min-h-screen flex items-center justify-center p-6">
+    <div class="container mx-auto max-w-4xl p-8 bg-white shadow-lg rounded-lg">
+        <h1 class="text-4xl font-extrabold text-center text-blue-700 mb-6">Ocean Route Optimizer</h1>
+
+        <div class="bg-gray-50 shadow-inner rounded-lg p-6">
+            <form id="route-form" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-lg font-semibold mb-2">Source Port</label>
+                    <select id="start-port" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <optgroup label="Indian Ports">
+                            <option value="Mumbai">Mumbai</option>
+                            <option value="Chennai">Chennai</option>
+                            <option value="Kolkata">Kolkata</option>
+                            <option value="Cochin">Cochin</option>
+                            <option value="Visakhapatnam">Visakhapatnam</option>
+                        </optgroup>
+                        <optgroup label="Sri Lankan Ports">
+                            <option value="Colombo">Colombo</option>
+                            <option value="Trincomalee">Trincomalee</option>
+                        </optgroup>
+                        <optgroup label="Bangladesh Ports">
+                            <option value="Chittagong">Chittagong</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-lg font-semibold mb-2">Destination Port</label>
+                    <select id="end-port" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <optgroup label="Indian Ports">
+                            <option value="Mumbai">Mumbai</option>
+                            <option value="Chennai">Chennai</option>
+                            <option value="Kolkata">Kolkata</option>
+                            <option value="Cochin">Cochin</option>
+                            <option value="Visakhapatnam">Visakhapatnam</option>
+                        </optgroup>
+                        <optgroup label="Sri Lankan Ports">
+                            <option value="Colombo">Colombo</option>
+                            <option value="Trincomalee">Trincomalee</option>
+                        </optgroup>
+                        <optgroup label="Bangladesh Ports">
+                            <option value="Chittagong">Chittagong</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="col-span-full text-center mt-4">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-800 text-white font-bold py-3 px-6 rounded-lg shadow-md transition transform hover:scale-105">
+                        Optimize Route
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div id="map" class="h-[500px] w-full mt-6 rounded-lg shadow-lg border border-blue-500" style="min-height: 400px;"></div>
+
+        <div id="route-details" class="mt-6 bg-gray-50 p-6 rounded-lg shadow-md hidden">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Route Details</h2>
+            <p class="text-gray-700">Start Port: <span id="detail-start-port" class="font-semibold"></span></p>
+            <p class="text-gray-700">End Port: <span id="detail-end-port" class="font-semibold"></span></p>
+            <p class="text-gray-700">Wind Speed: <span id="detail-wind-speed" class="font-semibold"></span> km/h</p>
+            <p class="text-gray-700">Wind Direction: <span id="detail-wind-direction" class="font-semibold"></span>°</p>
+        </div>
+    </div>
+
+
+    <script>
+        // Add to existing script in index.html
+        let windLayer = null;
+        let currentLayer = null;
+
+        async function fetchWindyData(lat, lon) {
+            const apiKey = 'FGFfSJL9G7N1AK6JNZBCThFrXpndwwgb';
+            try {
+                const response = await axios.get(`https://api.windy.com/api/point-forecast/v2`, {
+                    params: {
+                        lat: lat,
+                        lon: lon,
+                        model: 'ecmwf',
+                        parameters: ['wind', 'currentSpeed', 'currentDirection'],
+                        key: apiKey
+                    }
+                });
+
+                const windData = response.data.wind;
+                const currentData = response.data.current;
+
+                // Create wind layer
+                if (windLayer) map.removeLayer(windLayer);
+                windLayer = L.velocityLayer({
+                    displayValues: true,
+                    displayOptions: {
+                        velocityType: 'Wind',
+                        position: 'bottomleft'
+                    },
+                    data: windData
+                }).addTo(map);
+
+                // Create current layer
+                if (currentLayer) map.removeLayer(currentLayer);
+                currentLayer = L.velocityLayer({
+                    displayValues: true,
+                    displayOptions: {
+                        velocityType: 'Current',
+                        position: 'bottomright'
+                    },
+                    data: currentData
+                }).addTo(map);
+
+            } catch (error) {
+                console.error('Windy API Error:', error);
+            }
+        }
+
+        // Modify route optimization to include Windy data
+        document.getElementById('route-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const startPort = document.getElementById('start-port').value;
+            const endPort = document.getElementById('end-port').value;
+            if(startPort === endPort){
+                alert("Start and End ports cannot be the same");
+                return;
+            }
+
+
+            const startCoords = ports[startPort];
+            const endCoords = ports[endPort];
+
+            fetchWindyData((startCoords[0] + endCoords[0]) / 2, (startCoords[1] + endCoords[1]) / 2);
+        });
+
+        // Initialize map once on page load
+        let map = L.map('map').setView([20, 80], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Add port markers initially
+        const ports = {
+            'Mumbai': [19.0760, 72.8777],
+            'Chennai': [13.0827, 80.2707],
+            'Kolkata': [22.5726, 88.3639],
+            'Cochin': [9.9312, 76.2673],
+            'Visakhapatnam': [17.6868, 83.2185],
+            'Colombo': [6.9271, 79.8612],
+            'Trincomalee': [8.5874, 81.2287],
+            'Chittagong': [22.3193, 91.8357]
+        };
+
+        Object.entries(ports).forEach(([name, coords]) => {
+            L.marker(coords).addTo(map).bindPopup(name);
+        });
+
+        // Store route layer reference
+        let routeLayer = null;
+
+        document.getElementById('route-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const startPort = document.getElementById('start-port').value;
+            const endPort = document.getElementById('end-port').value;
+
+            // Remove previous route if exists
+            if (routeLayer) {
+                map.removeLayer(routeLayer);
+            }
+
+            axios.post('/optimize_route', {
+                start_port: startPort,
+                end_port: endPort
+            })
+                .then(response => {
+                    const data = response.data;
+
+                    // Update route details
+                    document.getElementById('detail-start-port').textContent = data.start_port;
+                    document.getElementById('detail-end-port').textContent = data.end_port;
+                    document.getElementById('detail-wind-speed').textContent = data.wind_data.wind_speed;
+                    document.getElementById('detail-wind-direction').textContent = data.wind_data.wind_direction;
+
+                    document.getElementById('route-details').classList.remove('hidden');
+
+                    // Draw optimized route
+                    const routeCoords = data.route;
+                    routeLayer = L.polyline(routeCoords, {
+                        color: 'red',
+                        weight: 3,
+                        opacity: 0.7
+                    }).addTo(map);
+
+                    // Fit map to route bounds
+                    map.fitBounds(routeLayer.getBounds());
+                })
+                .catch(error => {
+                    console.error('Route optimization error:', error);
+                    alert('Failed to optimize route');
+                });
+        });
+    </script>
+</body>
+
+</html>
